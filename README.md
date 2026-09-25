@@ -79,6 +79,7 @@ Node 22 LTS 를 권합니다. Node 24 에서는 `npm install` 이 Electron 바�
 | 변수 | 뜻 |
 |---|---|
 | `BMSYNC_ASSUME_GAME=1` | 게임이 켜져 있다고 보고 Reflux 설치·실행 흐름을 시험합니다 |
+| `BMSYNC_GAME_FLAG` | 이 경로에 파일이 있는 동안만 게임이 켜진 것으로 봅니다(게임 종료 흐름 시험) |
 | `BMSYNC_SERVER` | 보낼 서버 주소 (예: 로컬 dev 서버) |
 | `BMSYNC_TOKEN` | 설정 대신 쓸 토큰 |
 
@@ -92,6 +93,16 @@ git push --follow-tags
 ```
 
 태그와 `package.json` 버전이 다르면 워크플로가 멈춥니다.
+
+## 함께 쓰는 프로젝트
+
+게임 기록을 읽는 부분은 다른 오픈소스에 기대고 있습니다.
+
+| 프로젝트 | 하는 일 | 이 앱과의 관계 |
+|---|---|---|
+| [Reflux](https://github.com/olji/Reflux) (olji, MIT) | INFINITAS 실행 중 게임 기록을 읽어 `tracker.tsv` 로 남깁니다 | 이 앱이 읽는 파일을 만드는 도구입니다 |
+| [OhSorry-DP/Reflux](https://github.com/OhSorry-DP/Reflux) (MIT) | 최신 INFINITAS 패치에 대응한 Reflux 포크입니다 | 원본이 2026-05 이후 갱신되지 않아, 이 앱은 이 포크의 릴리스를 받아 씁니다 |
+| [INF오소리](https://github.com/OhSorry-DP) | 같은 Reflux 를 쓰는 기록 분석 앱입니다 | 함께 켜 두어도 부딪히지 않도록, INF오소리의 Reflux 가 떠 있으면 그 `tracker.tsv` 를 읽습니다. **INF오소리의 코드는 가져오지 않았습니다** (저장소에 라이선스가 없습니다) |
 
 ## 라이선스
 

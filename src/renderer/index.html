@@ -2,40 +2,110 @@
 <html lang="ko">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:">
   <title>beatmania.app Synchronizer</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- 골격 단계의 화면. 디자인은 따로 정한다. -->
-  <header>
-    <h1>beatmania<span>.app</span> Synchronizer</h1>
-    <div id="version"></div>
+  <!-- 상단바: 사이트 네비바와 같은 브랜드 표기 -->
+  <header class="bar">
+    <div class="brand">beatmania<span>.app</span> <small>Sync</small></div>
+    <button class="icon-btn" id="openSettings" title="설정" aria-label="설정">
+      <!-- 톱니바퀴. 선으로 그린다(채우면 덩어리로 보인다). Lucide "settings" 아이콘(ISC) 모양 -->
+      <svg class="stroke" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+    </button>
   </header>
 
-  <section id="status">
-    <div class="row"><span>상태</span><b id="summary">-</b></div>
-    <div class="row"><span>INFINITAS</span><b id="game">-</b></div>
-    <div class="row"><span>Reflux</span><b id="reflux">-</b></div>
-    <div class="row"><span>마지막 전송</span><b id="last">-</b></div>
-    <div id="error" hidden></div>
-    <button id="sync">지금 보내기</button>
-  </section>
+  <main id="main">
+    <!-- 토큰이 없을 때: 처음 설정 -->
+    <section class="card" id="onboard" hidden>
+      <h2>처음 설정</h2>
+      <ol class="steps">
+        <li>beatmania.app 에 로그인한 뒤 <a href="#" data-site="/account/token/">API 토큰</a>을 복사합니다.</li>
+        <li>아래 칸에 붙여 넣고 <b>연결</b>을 누릅니다.</li>
+        <li>INFINITAS 를 켜고 곡 선택 화면에 들어가면 기록이 올라갑니다.</li>
+      </ol>
+      <form class="token-form" data-token-form>
+        <input type="password" placeholder="API 토큰 붙여 넣기" autocomplete="off" spellcheck="false">
+        <button type="submit" class="btn primary">연결</button>
+      </form>
+      <p class="form-msg" data-token-msg></p>
+    </section>
 
-  <section id="token">
-    <label for="tokenInput">API 토큰</label>
-    <div class="inline">
-      <input id="tokenInput" type="password" placeholder="beatmania.app 의 API 토큰" autocomplete="off">
-      <button id="saveToken">저장</button>
+    <!-- 평소 화면 -->
+    <section class="card status" id="status" hidden>
+      <div class="status-head">
+        <span class="dot" id="dot"></span>
+        <div>
+          <div class="status-title" id="title">-</div>
+          <div class="status-sub" id="sub">-</div>
+        </div>
+      </div>
+
+      <div class="last">
+        <div class="last-label">마지막 전송 <span id="lastWhen">-</span></div>
+        <div class="stats">
+          <div><b id="nCreated">-</b><span>새 기록</span></div>
+          <div><b id="nImproved">-</b><span>갱신</span></div>
+          <div><b id="nUnmatched">-</b><span>못 찾은 곡</span></div>
+        </div>
+        <div class="session" id="session"></div>
+      </div>
+
+      <div class="notice" id="notice" hidden></div>
+
+      <div class="actions">
+        <button class="btn primary" id="sync">지금 보내기</button>
+        <button class="btn outline" id="profile">내 서열표 <span aria-hidden="true">↗</span></button>
+      </div>
+    </section>
+
+    <!-- 창 크기가 고정이라 남은 높이를 이 칸이 채우고, 목록만 안에서 스크롤한다 -->
+    <section class="card activity" id="activity" hidden>
+      <button class="fold" id="foldActivity" aria-expanded="false" aria-controls="history">
+        <span class="caret" aria-hidden="true">▸</span> 최근 활동
+      </button>
+      <ul id="history" hidden></ul>
+    </section>
+  </main>
+
+  <!-- 설정 판 -->
+  <aside class="panel" id="settings" hidden>
+    <header class="bar">
+      <button class="icon-btn" id="closeSettings" aria-label="뒤로">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/></svg>
+      </button>
+      <div class="bar-title">설정</div>
+      <span></span>
+    </header>
+    <div class="panel-body">
+      <section class="card">
+        <h3>계정</h3>
+        <p class="muted" id="account">-</p>
+        <form class="token-form" data-token-form>
+          <input type="password" placeholder="새 API 토큰" autocomplete="off" spellcheck="false">
+          <button type="submit" class="btn primary">바꾸기</button>
+        </form>
+        <p class="form-msg" data-token-msg></p>
+        <p class="links"><a href="#" data-site="/account/token/">사이트에서 토큰 보기</a> · <a href="#" id="clearToken">연결 해제</a></p>
+      </section>
+
+      <section class="card">
+        <h3>실행</h3>
+        <label class="switch"><input type="checkbox" id="launch"> Windows 시작 시 자동 실행</label>
+        <dl class="kv">
+          <dt>Reflux</dt><dd id="refluxInfo">-</dd>
+          <dt>버전</dt><dd id="versionInfo">-</dd>
+        </dl>
+      </section>
+
+      <section class="card fill">
+        <h3>로그 <span class="h-note">문제가 있으면 로그 파일을 보내 주세요</span></h3>
+        <p class="links"><a href="#" id="openLogs">로그 폴더 열기</a> · <a href="#" data-site="/sync/">동기화 안내</a></p>
+        <pre id="logText"></pre>
+      </section>
     </div>
-    <p class="hint"><a href="#" id="openToken">beatmania.app 에서 토큰 확인하기</a></p>
-    <label class="check"><input type="checkbox" id="launch"> Windows 시작 시 자동 실행</label>
-  </section>
-
-  <section id="logs">
-    <div class="inline"><b>로그</b><a href="#" id="openLogs">폴더 열기</a></div>
-    <pre id="logText"></pre>
-  </section>
+  </aside>
 
   <script src="renderer.js"></script>
 </body>

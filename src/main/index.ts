@@ -2,13 +2,14 @@
 //
 // 트레이에 상주한다. 창을 닫아도 꺼지지 않고 트레이로 숨는다. 끄려면 트레이 메뉴의
 // "종료". Windows 로그인 때 창 없이(--hidden) 뜬다.
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, shell, Tray } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
 import { join } from 'path';
 
 import { log, logDir, onLine, recent } from './log';
 import * as settings from './settings';
 import { Sync } from './sync';
 import { installNow, startUpdater, UpdateStatus } from './updater';
+import { whoami } from './uploader';
 
 const ASSETS = join(__dirname, '..', '..', 'assets');
 
@@ -16,7 +17,8 @@ let win: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
 let updateStatus: { status: UpdateStatus; version?: string } = { status: 'idle' };
-const sync = new Sync();
+// safeStorage(토큰 복호화)는 앱이 준비된 뒤에만 쓸 수 있다. 그래서 boot 에서 만든다.
+let sync: Sync | null = null;
 
 if (!app.requestSingleInstanceLock()) {
   // 이미 떠 있다. 그쪽 창을 띄우게 하고 이쪽은 끈다.
@@ -27,11 +29,13 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function snapshot() {
+  const s = settings.load();
   return {
-    ...sync.state,
+    ...(sync?.state ?? {}),
     update: updateStatus,
-    launchAtLogin: settings.load().launchAtLogin,
-    serverUrl: settings.load().serverUrl,
+    launchAtLogin: s.launchAtLogin,
+    serverUrl: s.serverUrl,
+    username: s.username,
     log: recent(),
   };
 }
@@ -43,19 +47,29 @@ function push(): void {
 
 function createWindow(): void {
   win = new BrowserWindow({
-    width: 520,
-    height: 640,
+    // 크기 고정. 길어지는 것(최근 활동·로그)은 화면 안에서 그 칸만 스크롤한다.
+    width: 420,
+    height: 600,
+    useContentSize: true,
+    resizable: false,
+    maximizable: false,
+    fullscreenable: false,
     show: false,
-    resizable: true,
     autoHideMenuBar: true,
     title: 'beatmania.app Synchronizer',
     icon: join(ASSETS, 'tray.png'),
+    backgroundColor: '#0f172a',
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
+  });
+  // 화면 쪽 오류를 앱 로그에 남긴다. 사용자 PC 에서 창이 비어 보일 때 원인을 볼 곳이 이것뿐이다.
+  win.webContents.on('preload-error', (_e, path, err) => log(`preload 오류 (${path}): ${err.message}`));
+  win.webContents.on('console-message', (_e, level, message, line, source) => {
+    if (level >= 2) log(`화면 오류: ${message} (${source}:${line})`);
   });
   win.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   win.on('close', (e) => {
@@ -77,7 +91,8 @@ function showWindow(): void {
 }
 
 function trayLabel(): string {
-  const s = sync.state;
+  const s = sync?.state;
+  if (!s) return '준비 중';
   if (!s.tokenSet) return '토큰을 넣어 주세요';
   if (s.tokenInvalid) return '토큰이 올바르지 않습니다';
   if (s.error) return '문제가 있습니다';
@@ -92,8 +107,8 @@ function refreshTray(): void {
     { label: trayLabel(), enabled: false },
     { type: 'separator' },
     { label: '열기', click: showWindow },
-    { label: '지금 보내기', click: () => void sync.syncNow() },
-    { label: 'beatmania.app 열기', click: () => void shell.openExternal(settings.load().serverUrl) },
+    { label: '지금 보내기', click: () => void sync?.syncNow() },
+    { label: '내 서열표 열기', click: openProfile },
     ...(updateStatus.status === 'ready'
       ? [{ label: `업데이트 설치 (${updateStatus.version})`, click: () => { quitting = true; installNow(); } }]
       : []),
@@ -103,10 +118,38 @@ function refreshTray(): void {
   tray.setContextMenu(menu);
 }
 
+function siteUrl(path: string): string {
+  return settings.load().serverUrl.replace(/\/+$/, '') + path;
+}
+
+function openProfile(): void {
+  const u = settings.load().username;
+  void shell.openExternal(siteUrl(u ? `/u/${encodeURIComponent(u)}/` : '/sync/'));
+}
+
+function notify(title: string, body: string): void {
+  log(`알림: ${title} — ${body}`);
+  if (!Notification.isSupported()) return;
+  const n = new Notification({ title, body, icon: join(ASSETS, 'tray.png') });
+  n.on('click', showWindow);
+  n.show();
+}
+
 async function quit(): Promise<void> {
   quitting = true;
-  await sync.shutdown();
+  await sync?.shutdown();
   app.quit();
+}
+
+/** 저장된 토큰의 주인을 확인해 둔다. 네트워크가 없으면 다음 기회로 미룬다. */
+async function refreshUsername(): Promise<void> {
+  const token = settings.getToken();
+  if (!token) return;
+  const r = await whoami(settings.load().serverUrl, token, app.getVersion());
+  if (r.kind === 'ok' && r.username !== settings.load().username) {
+    settings.save({ username: r.username });
+    push();
+  }
 }
 
 function boot(): void {
@@ -117,13 +160,23 @@ function boot(): void {
     app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: ['--hidden'] });
   }
 
+  sync = new Sync();
   tray = new Tray(nativeImage.createFromPath(join(ASSETS, 'tray-16.png')));
   tray.on('click', showWindow);
   createWindow();
 
   onLine(() => push());
   sync.onChange(() => push());
+  // 플레이 중에는 알림으로 방해하지 않는다. 게임을 끌 때 한 번만 요약한다.
+  sync.onSummary((ss) => {
+    if (ss.created || ss.improved) {
+      notify('이번 플레이를 서열표에 반영했습니다', `새 기록 ${ss.created} · 갱신 ${ss.improved}`);
+    }
+  });
+  // 손봐야 하는 문제는 바로 알린다(같은 문제는 한 번만).
+  sync.onIssue((msg) => notify('beatmania.app Synchronizer', msg));
   sync.start();
+  void refreshUsername();
   startUpdater((status, version) => {
     updateStatus = { status, version };
     push();
@@ -137,21 +190,37 @@ function boot(): void {
 
 // --- 화면과 주고받는 것 ------------------------------------------------------
 ipcMain.handle('state:get', () => snapshot());
-ipcMain.handle('token:set', (_e, token: string) => {
-  settings.setToken(token);
-  sync.tokenChanged();
-  log(token.trim() ? 'API 토큰을 저장했습니다' : 'API 토큰을 지웠습니다');
+
+/** 토큰을 서버에 확인한 뒤에만 저장한다. 틀린 토큰으로 조용히 실패하는 일을 막는다. */
+ipcMain.handle('token:set', async (_e, token: string) => {
+  const t = (token || '').trim();
+  if (!t) {
+    settings.setToken(null);
+    settings.save({ username: null });
+    sync?.tokenChanged();
+    log('API 토큰을 지웠습니다');
+    push();
+    return { ok: true };
+  }
+  const r = await whoami(settings.load().serverUrl, t, app.getVersion());
+  if (r.kind === 'unauthorized') return { ok: false, error: '토큰이 맞지 않습니다. 사이트에서 다시 복사해 주세요.' };
+  if (r.kind === 'network') return { ok: false, error: `서버에 닿지 않습니다 (${r.error})` };
+  settings.setToken(t);
+  settings.save({ username: r.username });
+  sync?.tokenChanged();
+  log(`API 토큰을 저장했습니다 (${r.username})`);
   push();
+  return { ok: true, username: r.username };
 });
 ipcMain.handle('settings:launchAtLogin', (_e, on: boolean) => {
   settings.save({ launchAtLogin: on });
   if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
   push();
 });
-ipcMain.handle('sync:now', () => sync.syncNow());
+ipcMain.handle('sync:now', () => sync?.syncNow());
 ipcMain.handle('open:logs', () => shell.openPath(logDir()));
-ipcMain.handle('open:site', (_e, path: string) =>
-  shell.openExternal(settings.load().serverUrl.replace(/\/+$/, '') + (path || '/')));
+ipcMain.handle('open:profile', () => openProfile());
+ipcMain.handle('open:site', (_e, path: string) => shell.openExternal(siteUrl(path || '/')));
 
 app.on('window-all-closed', () => { /* 트레이에 남는다 */ });
 app.on('before-quit', () => { quitting = true; });

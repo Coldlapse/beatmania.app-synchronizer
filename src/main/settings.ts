@@ -9,12 +9,14 @@ import { dirname, join } from 'path';
 export interface Settings {
   serverUrl: string;
   tokenEnc: string | null;
+  username: string | null;     // 토큰 주인(/api/v1/me/). '내 서열표' 링크에 쓴다
   launchAtLogin: boolean;
 }
 
 const DEFAULTS: Settings = {
   serverUrl: 'https://beatmania.app',
   tokenEnc: null,
+  username: null,
   launchAtLogin: true,
 };
 

@@ -10,6 +10,7 @@
 // 4. 보낼 거리가 있으면 1분에 한 번까지 보낸다. 게임이 꺼지는 순간에는 기다리지
 //    않고 바로 한 번 보낸다(마지막 곡을 놓치지 않게).
 import { app } from 'electron';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { readFile, stat } from 'fs/promises';
 import { dirname, join } from 'path';
 
@@ -24,6 +25,18 @@ const STABLE_MS = 2000;
 const MIN_INTERVAL_MS = 60 * 1000;
 const RETRY_MAX_MS = 5 * 60 * 1000;
 
+// 화면의 '최근 활동'에 보이는 한 줄. 앱을 다시 켜도 남도록 파일에 둔다.
+export interface HistoryItem {
+  at: number;
+  kind: UploadResult['kind'];
+  created?: number;
+  improved?: number;
+  unmatched?: number;
+  message?: string;
+}
+const HISTORY_MAX = 30;
+const historyFile = () => join(app.getPath('userData'), 'history.json');
+
 export interface State {
   version: string;
   tokenSet: boolean;
@@ -37,13 +50,19 @@ export interface State {
   error: string | null;                   // 마지막 문제(해결되면 지운다)
   lastUpload: { at: number; result: UploadResult } | null;
   nextUploadAt: number | null;
+  session: { created: number; improved: number; uploads: number };   // 이번 게임 켠 뒤로
+  history: HistoryItem[];
 }
 
 type Listener = (s: State) => void;
+export interface SessionSummary { created: number; improved: number; uploads: number }
 
 export class Sync {
   state: State;
   private listener: Listener | null = null;
+  private onSessionEnd: ((s: SessionSummary) => void) | null = null;
+  private onProblem: ((msg: string) => void) | null = null;
+  private lastProblem: string | null = null;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
 
@@ -68,7 +87,32 @@ export class Sync {
       error: null,
       lastUpload: null,
       nextUploadAt: null,
+      session: { created: 0, improved: 0, uploads: 0 },
+      history: loadHistory(),
     };
+  }
+
+  /** 게임을 끌 때 이번 세션 요약을 받는다(알림용). */
+  onSummary(fn: (s: SessionSummary) => void): void {
+    this.onSessionEnd = fn;
+  }
+
+  /** 사용자가 손봐야 하는 문제가 새로 생기면 한 번 받는다(알림용). */
+  onIssue(fn: (msg: string) => void): void {
+    this.onProblem = fn;
+  }
+
+  private problem(msg: string | null): void {
+    if (msg && msg !== this.lastProblem) this.onProblem?.(msg);
+    this.lastProblem = msg;
+  }
+
+  private remember(item: HistoryItem): void {
+    const history = [item, ...this.state.history].slice(0, HISTORY_MAX);
+    this.set({ history });
+    try {
+      writeFileSync(historyFile(), JSON.stringify(history), 'utf-8');
+    } catch { /* 기록 저장 실패로 동기화가 멈추면 안 된다 */ }
   }
 
   onChange(fn: Listener): void {
@@ -124,7 +168,9 @@ export class Sync {
   private async observe(): Promise<void> {
     // 개발 중에만: 게임 없이 Reflux 설치·실행 흐름을 시험하려고 "게임이 켜져 있다"고 친다.
     // 설치판(app.isPackaged)에서는 무시한다.
-    const assume = !app.isPackaged && process.env.BMSYNC_ASSUME_GAME === '1';
+    // BMSYNC_GAME_FLAG 에 파일 경로를 주면 그 파일이 있는 동안만 켜진 것으로 친다(종료 흐름 시험용).
+    const flag = process.env.BMSYNC_GAME_FLAG;
+    const assume = !app.isPackaged && (process.env.BMSYNC_ASSUME_GAME === '1' || (!!flag && existsSync(flag)));
     const game = assume ? [0] : await listPids('bm2dx.exe');
     const refluxPids = await listPids('Reflux.exe');
     const gameState = game === null ? 'unknown' : game.length ? 'running' : 'stopped';
@@ -146,8 +192,20 @@ export class Sync {
         this.foreignTsv.set(pid, exe ? join(dirname(exe), 'tracker.tsv') : null);
         log(`다른 Reflux(PID ${pid}) 의 기록을 읽습니다: ${this.foreignTsv.get(pid) ?? '(경로를 알 수 없음)'}`);
       }
+      if (gameState === 'running' && !wasRunning) {
+        this.set({ session: { created: 0, improved: 0, uploads: 0 } });
+      }
+      if (wasRunning && gameState === 'stopped') {
+        await this.watchFile();
+        if (this.state.pending) await this.send(true);
+        if (this.state.session.uploads > 0) this.onSessionEnd?.(this.state.session);
+      }
       this.set({ game: gameState, mode: 'external', refluxPid: pid, tsvPath: this.foreignTsv.get(pid) ?? null });
       return;
+    }
+
+    if (gameState === 'running' && !wasRunning) {
+      this.set({ session: { created: 0, improved: 0, uploads: 0 } });
     }
 
     if (gameState === 'running') {
@@ -161,6 +219,7 @@ export class Sync {
           this.installBackoffUntil = Date.now() + 60000;
           this.set({ error: `Reflux 를 띄우지 못했습니다: ${(e as Error).message}` });
           log(this.state.error!);
+          this.problem('Reflux 를 띄우지 못했습니다. 앱을 열어 확인해 주세요.');
         } finally {
           this.set({ busy: null });
         }
@@ -175,6 +234,7 @@ export class Sync {
       await this.watchFile();
       if (this.state.pending) await this.send(true);
       if (ownAlive) await reflux.stop();
+      if (this.state.session.uploads > 0) this.onSessionEnd?.(this.state.session);
     }
     this.set({ game: gameState, mode: 'none', refluxPid: null });
   }
@@ -219,12 +279,21 @@ export class Sync {
         this.nextAllowed = now + MIN_INTERVAL_MS;
         this.retryMs = 30000;
         log(`전송 완료 — 새 기록 ${s.created}, 갱신 ${s.improved}, 변화 없음 ${s.unchanged}, 못 찾은 곡 ${s.unmatched}`);
-        this.set({ error: null });
+        const ses = this.state.session;
+        this.set({ error: null, session: { created: ses.created + s.created,
+          improved: ses.improved + s.improved, uploads: ses.uploads + 1 } });
+        // 바뀐 것이 없으면 최근 활동을 어지럽히지 않는다.
+        if (s.created || s.improved || s.unmatched) {
+          this.remember({ at: now, kind: 'ok', created: s.created, improved: s.improved, unmatched: s.unmatched });
+        }
+        this.problem(null);
         break;
       }
       case 'unauthorized':
         log('토큰이 틀렸거나 만료됐습니다. 설정에서 다시 넣어 주세요');
         this.set({ tokenInvalid: true });
+        this.remember({ at: now, kind: 'unauthorized', message: '토큰이 올바르지 않습니다' });
+        this.problem('API 토큰이 올바르지 않습니다. 앱에서 다시 넣어 주세요.');
         break;
       case 'rate_limited':
         this.nextAllowed = now + result.retryAfterSec * 1000;
@@ -234,6 +303,7 @@ export class Sync {
         this.sentMtime = mtime;
         log(`서버가 파일을 거절했습니다 (${result.status}): ${result.error}`);
         this.set({ error: result.error });
+        this.remember({ at: now, kind: 'rejected', message: result.error });
         break;
       case 'network':
         this.nextAllowed = now + this.retryMs;
@@ -247,5 +317,15 @@ export class Sync {
       pending: mtime !== this.sentMtime,
       nextUploadAt: this.nextAllowed || null,
     });
+  }
+}
+
+
+function loadHistory(): HistoryItem[] {
+  try {
+    const h = JSON.parse(readFileSync(historyFile(), 'utf-8'));
+    return Array.isArray(h) ? h.slice(0, HISTORY_MAX) : [];
+  } catch {
+    return [];
   }
 }

@@ -21,6 +21,27 @@ export type UploadResult =
   | { kind: 'rejected'; status: number; error: string }   // 파일이 이상함 — 같은 파일은 다시 안 보낸다
   | { kind: 'network'; error: string };             // 잠시 뒤 다시
 
+export type WhoAmI =
+  | { kind: 'ok'; username: string }
+  | { kind: 'unauthorized' }
+  | { kind: 'network'; error: string };
+
+/** 토큰이 누구의 것인지. 토큰을 넣는 순간 맞는지 확인하는 데 쓴다. */
+export async function whoami(serverUrl: string, token: string, version: string): Promise<WhoAmI> {
+  try {
+    const res = await fetch(`${serverUrl.replace(/\/+$/, '')}/api/v1/me/`, {
+      headers: { Authorization: `Token ${token}`, 'User-Agent': `beatmania.app-synchronizer/${version}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.status === 401 || res.status === 403) return { kind: 'unauthorized' };
+    if (!res.ok) return { kind: 'network', error: `HTTP ${res.status}` };
+    const j = (await res.json()) as { username?: string };
+    return j.username ? { kind: 'ok', username: j.username } : { kind: 'network', error: '응답 형식이 다릅니다' };
+  } catch (e) {
+    return { kind: 'network', error: (e as Error).message };
+  }
+}
+
 export async function upload(serverUrl: string, token: string, body: Buffer,
                              version: string): Promise<UploadResult> {
   let res: Response;

@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('api', {
   syncNow: () => ipcRenderer.invoke('sync:now'),
   openLogs: () => ipcRenderer.invoke('open:logs'),
   openSite: (path: string) => ipcRenderer.invoke('open:site', path),
+  openProfile: () => ipcRenderer.invoke('open:profile'),
 });
