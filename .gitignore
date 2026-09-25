@@ -1,0 +1,10 @@
+node_modules/
+dist/
+release/
+*.log
+
+# 작업 메모·에이전트 지시 파일은 올리지 않는다
+CLAUDE.md
+claude.md
+*.local.md
+handoff*.md

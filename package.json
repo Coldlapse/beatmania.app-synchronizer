@@ -1,0 +1,70 @@
+{
+  "name": "beatmania-app-synchronizer",
+  "productName": "beatmania.app Synchronizer",
+  "version": "0.1.0",
+  "description": "INFINITAS 플레이 기록을 beatmania.app 서열표로 자동 동기화하는 상주 앱",
+  "author": "Coldlapse",
+  "license": "MIT",
+  "homepage": "https://beatmania.app/sync/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Coldlapse/beatmania.app-synchronizer.git"
+  },
+  "main": "dist/main/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-static.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dist": "npm run build && electron-builder --win --publish never",
+    "release": "npm run build && electron-builder --win --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  },
+  "build": {
+    "appId": "app.beatmania.synchronizer",
+    "productName": "beatmania.app Synchronizer",
+    "artifactName": "beatmania.app-Synchronizer-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "beatmania.app Synchronizer"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Coldlapse",
+        "repo": "beatmania.app-synchronizer",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

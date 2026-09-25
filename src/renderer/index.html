@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+  <title>beatmania.app Synchronizer</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- 골격 단계의 화면. 디자인은 따로 정한다. -->
+  <header>
+    <h1>beatmania<span>.app</span> Synchronizer</h1>
+    <div id="version"></div>
+  </header>
+
+  <section id="status">
+    <div class="row"><span>상태</span><b id="summary">-</b></div>
+    <div class="row"><span>INFINITAS</span><b id="game">-</b></div>
+    <div class="row"><span>Reflux</span><b id="reflux">-</b></div>
+    <div class="row"><span>마지막 전송</span><b id="last">-</b></div>
+    <div id="error" hidden></div>
+    <button id="sync">지금 보내기</button>
+  </section>
+
+  <section id="token">
+    <label for="tokenInput">API 토큰</label>
+    <div class="inline">
+      <input id="tokenInput" type="password" placeholder="beatmania.app 의 API 토큰" autocomplete="off">
+      <button id="saveToken">저장</button>
+    </div>
+    <p class="hint"><a href="#" id="openToken">beatmania.app 에서 토큰 확인하기</a></p>
+    <label class="check"><input type="checkbox" id="launch"> Windows 시작 시 자동 실행</label>
+  </section>
+
+  <section id="logs">
+    <div class="inline"><b>로그</b><a href="#" id="openLogs">폴더 열기</a></div>
+    <pre id="logText"></pre>
+  </section>
+
+  <script src="renderer.js"></script>
+</body>
+</html>

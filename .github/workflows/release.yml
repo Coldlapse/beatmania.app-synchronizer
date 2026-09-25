@@ -1,0 +1,37 @@
+# v* 태그를 올리면 Windows 설치 파일을 만들어 GitHub Releases 에 올린다.
+# 앱은 electron-updater 로 이 릴리스(latest.yml)를 보고 스스로 업데이트한다.
+#
+#   npm version patch        # package.json 버전과 태그(v0.1.1)를 함께 만든다
+#   git push --follow-tags
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write          # 릴리스 생성·파일 업로드
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # 태그와 package.json 버전이 다르면 멈춘다. 다르면 업데이트가 엉뚱한 버전을 가리킨다.
+      - name: 태그와 버전 대조
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "태그 $GITHUB_REF_NAME 와 package.json $v 가 다릅니다"; exit 1; }
+
+      - run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
