@@ -18,7 +18,7 @@ const DEFAULTS: Settings = {
   serverUrl: 'https://beatmania.app',
   tokenEnc: null,
   username: null,
-  launchAtLogin: true,
+  launchAtLogin: false,        // 처음 설치하면 꺼져 있다. 사용자가 설정에서 켠다(사용자 결정 2026-09-26)
   skipVersion: null,
 };
 
