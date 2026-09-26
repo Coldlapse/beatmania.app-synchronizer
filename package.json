@@ -1,7 +1,7 @@
 {
   "name": "beatmania-app-synchronizer",
   "productName": "beatmania.app Synchronizer",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "beatmania.app Synchronizer",
   "author": "Coldlapse",
   "license": "MIT",
@@ -49,7 +49,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

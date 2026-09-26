@@ -64,7 +64,9 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'beatmania.app Synchronizer',
-    icon: join(ASSETS, 'icon.png'),       // 작업 표시줄·창 아이콘(256px)
+    // 작업 표시줄·창 아이콘. 크기별(16~256px)로 미리 Lanczos 로 줄여 둔 .ico 다 — PNG 한 장을 주면
+    // Windows 가 표시할 때 필터 없이 줄여 계단이 졌다(2026-09-26). build/icon.ico 와 같은 파일.
+    icon: join(ASSETS, 'icon.ico'),
     backgroundColor: '#0f172a',
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
