@@ -15,10 +15,41 @@ import { readFile, stat } from 'fs/promises';
 import { dirname, join } from 'path';
 
 import { log } from './log';
-import { listPids, processPath } from './processes';
+import { listPids, processInfo, ProcInfo, processPath } from './processes';
 import * as reflux from './reflux';
 import * as settings from './settings';
 import { upload, UploadResult } from './uploader';
+
+/**
+ * 우리 것이 아닌 Reflux 를 고른다. 이 앱이 띄운 Reflux(own)의 자식으로 생긴 Reflux.exe 와, 우리 설치 폴더의
+ * Reflux.exe 는 우리 것으로 친다.
+ *
+ * 전에는 PID 가 own 과 다르면 모두 '남의 것' 으로 봤다. 어떤 PC 에서는 우리가 띄운 Reflux 밑에 Reflux.exe 가
+ * 하나 더 생겼고(경로는 읽히지 않음 — 백신 샌드박스로 보인다, 2026-09-26 사용자 제보), 앱은 그걸 남의 것으로 보고
+ * 자기 Reflux 를 껐다. taskkill /T 로 자식도 같이 죽고 → 다시 띄우고 → 또 생기는 것을 몇 초마다 되풀이했다.
+ * info 가 null(조회 실패)이면 판단할 근거가 없어 예전처럼 PID 로만 가른다.
+ */
+export function foreignReflux(pids: number[], own: number | null, info: ProcInfo[] | null,
+                              ownExe: string): number[] {
+  const others = pids.filter((p) => p !== own);
+  if (!others.length || !info) return others;
+  const byPid = new Map(info.map((x) => [x.pid, x]));
+  const ours = (pid: number): boolean => {
+    let cur = byPid.get(pid);
+    if (cur?.path && cur.path.toLowerCase() === ownExe.toLowerCase()) return true;
+    for (let depth = 0; cur && depth < 5; depth++) {          // 부모 쪽으로 몇 단계만 거슬러 본다
+      if (own !== null && cur.ppid === own) return true;
+      cur = byPid.get(cur.ppid);
+    }
+    return false;
+  };
+  return others.filter((p) => !ours(p));
+}
+
+// 우리 Reflux 를 '남의 것이 떠 있어서' 내리는 일이 이 시간 안에 이 횟수만큼 되풀이되면 전환을 멈춘다.
+const FLAP_WINDOW_MS = 3 * 60 * 1000;
+const FLAP_LIMIT = 3;
+const FLAP_HOLD_MS = 10 * 60 * 1000;
 
 const TICK_MS = 3000;
 const STABLE_MS = 2000;
@@ -72,6 +103,9 @@ export class Sync {
   private retryMs = 30000;
   private installBackoffUntil = 0;
   private foreignTsv = new Map<number, string | null>();
+  private yields: number[] = [];          // 남의 것 때문에 우리 Reflux 를 내린 시각들
+  private holdOwnUntil = 0;               // 전환이 되풀이되면 이 시각까지 남의 것을 무시하고 우리 것을 쓴다
+  private seenDetails = new Set<number>(); // 진단 로그를 한 번만 남긴 PID
 
   constructor() {
     this.state = {
@@ -178,13 +212,35 @@ export class Sync {
 
     const own = reflux.getOwnPid();
     const ownAlive = own !== null && refluxPids !== null && refluxPids.includes(own);
-    const foreign = (refluxPids ?? []).filter((p) => p !== own);
+    let foreign = (refluxPids ?? []).filter((p) => p !== own);
+    if (foreign.length) {
+      // PID 만으로는 우리 Reflux 의 자식과 남의 Reflux 를 못 가른다. 부모·경로를 본다(foreignReflux).
+      const info = await processInfo('Reflux.exe');
+      for (const p of foreign) {
+        if (this.seenDetails.has(p)) continue;
+        this.seenDetails.add(p);
+        const x = info?.find((i) => i.pid === p);
+        log(`Reflux 확인: PID ${p}, 부모 ${x ? x.ppid : '?'}${x?.ppid === own ? '(이 앱의 Reflux)' : ''}, ` +
+            `경로 ${x?.path ?? '(읽을 수 없음)'}`);
+      }
+      foreign = foreignReflux(refluxPids ?? [], own, info, reflux.exePath());
+    }
+    if (foreign.length && Date.now() < this.holdOwnUntil) foreign = [];
 
     if (foreign.length) {
       // 남의 Reflux 가 있다. 우리 것은 내린다.
       if (ownAlive) {
         log('다른 프로그램의 Reflux 가 떠 있어 이 앱의 Reflux 를 내립니다');
         await reflux.stop();
+        const now = Date.now();
+        this.yields = [...this.yields.filter((t) => now - t < FLAP_WINDOW_MS), now];
+        if (this.yields.length >= FLAP_LIMIT) {
+          // 남의 Reflux 가 우리 것을 켤 때마다 나타났다 사라지기를 되풀이한다. 전환을 멈추고 우리 것을 쓴다.
+          this.holdOwnUntil = now + FLAP_HOLD_MS;
+          this.yields = [];
+          log('Reflux 전환이 되풀이되어 10분 동안 이 앱의 Reflux 를 씁니다 — 백신이 Reflux 를 검사·재실행하고 있을 수 있습니다');
+          this.problem('Reflux 가 켜졌다 꺼지기를 되풀이합니다. 백신 예외에 Reflux 폴더를 넣어 보세요(사이트의 API 토큰 페이지 안내).');
+        }
       }
       const pid = foreign[0];
       if (!this.foreignTsv.has(pid)) {

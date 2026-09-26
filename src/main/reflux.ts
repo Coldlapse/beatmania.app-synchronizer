@@ -64,7 +64,7 @@ export function workDir(): string {
 export function ownTsvPath(): string {
   return join(workDir(), 'tracker.tsv');
 }
-const exePath = () => join(workDir(), 'Reflux.exe');
+export const exePath = () => join(workDir(), 'Reflux.exe');
 const tagPath = () => join(workDir(), '.release-tag');
 
 interface Release {
