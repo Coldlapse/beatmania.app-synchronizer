@@ -32,7 +32,7 @@ INFINITAS ──(Reflux)──> tracker.tsv ──(이 앱)──> beatmania.app
 
 ## 설치
 
-1. [Releases](https://github.com/Coldlapse/beatmania.app-synchronizer/releases) 에서
+1. [최신 릴리스](https://github.com/Coldlapse/beatmania.app-synchronizer/releases/latest) 에서
    `beatmania.app-Synchronizer-Setup-<버전>.exe` 를 받아 실행합니다.
 2. beatmania.app 에 로그인한 뒤 [API 토큰](https://beatmania.app/account/token/) 을 복사해
    앱의 **API 토큰** 칸에 넣습니다.
