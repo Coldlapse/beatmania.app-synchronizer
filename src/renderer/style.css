@@ -132,3 +132,10 @@ main > .card:last-child, .panel-body > .card:last-child { margin-bottom: 0; }
 .links { font-size: .85rem; margin: 8px 0 0; }
 pre { flex: 1; min-height: 60px; overflow: auto; font-size: 11px; margin: 8px 0 0; padding: 8px;
   background: var(--surface-2); border-radius: 8px; white-space: pre-wrap; color: var(--muted); }
+
+/* 설정 > 감사의 말 */
+.credit { font-size: .8rem; line-height: 1.55; margin: 0; }
+.credit a { color: var(--accent, #60a5fa); }
+/* 설정 화면은 칸이 늘어 로그 칸이 눌려 사라지지 않도록 최소 높이를 두고, 넘치면 화면 전체를 스크롤한다 */
+#settings .panel-body { overflow-y: auto; }
+#settings .panel-body .card.fill { min-height: 170px; }

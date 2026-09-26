@@ -59,6 +59,9 @@ INFINITAS ──(Reflux)──> tracker.tsv ──(이 앱)──> beatmania.app
 - Reflux 는 원본(olji/Reflux)이 2026-05 이후 갱신되지 않아, 게임 패치에 대응이 올라오는
   포크 [OhSorry-DP/Reflux](https://github.com/OhSorry-DP/Reflux) 의 최신 릴리스를 받아 씁니다.
   둘 다 MIT 라이선스입니다. 이 앱은 Reflux 를 포함해 배포하지 않고 처음 필요할 때 받습니다.
+- 게임 패치로 메모리 주소만 바뀌면 새 주소(오프셋)는 포크가 아니라 INF오소리 측의
+  [gist](https://gist.github.com/OhSorry-DP/30c3ba6f87df9847291c42ea216a8d2a) 에만 올라옵니다(2026-06-03 패치가
+  그랬습니다). 이 앱은 Reflux 를 켜기 전에 그 gist 를 보고, 더 새 판이면 `offsets.txt` 를 그것으로 씁니다.
 - 이 앱은 자기가 띄운 Reflux 만 끕니다.
 
 ## 개발
@@ -102,7 +105,11 @@ git push --follow-tags
 |---|---|---|
 | [Reflux](https://github.com/olji/Reflux) (olji, MIT) | INFINITAS 실행 중 게임 기록을 읽어 `tracker.tsv` 로 남깁니다 | 이 앱이 읽는 파일을 만드는 도구입니다 |
 | [OhSorry-DP/Reflux](https://github.com/OhSorry-DP/Reflux) (MIT) | 최신 INFINITAS 패치에 대응한 Reflux 포크입니다 | 원본이 2026-05 이후 갱신되지 않아, 이 앱은 이 포크의 릴리스를 받아 씁니다 |
+| [INF오소리 오프셋 gist](https://gist.github.com/OhSorry-DP/30c3ba6f87df9847291c42ea216a8d2a) | 게임 패치마다 바뀌는 Reflux 메모리 주소를 빌드별로 공개합니다 | Reflux 를 켜기 전에 읽어, 더 새 판이면 `offsets.txt` 로 씁니다(데이터만 읽고 코드는 가져오지 않았습니다) |
 | [INF오소리](https://github.com/OhSorry-DP) | 같은 Reflux 를 쓰는 기록 분석 앱입니다 | 함께 켜 두어도 부딪히지 않도록, INF오소리의 Reflux 가 떠 있으면 그 `tracker.tsv` 를 읽습니다. **INF오소리의 코드는 가져오지 않았습니다** (저장소에 라이선스가 없습니다) |
+
+Reflux 의 패치 대응 포크와 오프셋을 꾸준히 공개해 주시는 INF오소리(OhSorry-DP) 측에 진심으로 감사드립니다.
+이 앱이 게임 패치 뒤에도 계속 동작할 수 있는 것은 그 덕분입니다.
 
 ## 라이선스
 

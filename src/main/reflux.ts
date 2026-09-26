@@ -4,6 +4,7 @@
 // tracker.tsv 를 쓰는 프로그램이다. 원본은 2026-05 이후 갱신이 없어 게임 패치를
 // 따라가지 못한다. 그래서 패치 대응이 올라오는 포크(OhSorry-DP/Reflux, MIT)의
 // 릴리스를 받는다. 실행 파일·offsets.txt 는 릴리스에서, 보조 파일은 포크 저장소에서.
+// 주소(offsets.txt)는 그 뒤 오소리 gist 에 더 새 판이 있으면 그것으로 덮어쓴다(아래 syncOffsetsFromGist).
 //
 // 이 앱은 자기가 띄운 Reflux 만 끈다(PID 로). 이름으로 전부 끄면 INF오소리 같은
 // 다른 프로그램의 Reflux 까지 죽인다.
@@ -121,6 +122,69 @@ export async function ensureInstalled(): Promise<void> {
   }
   const cfg = join(workDir(), 'config.ini');
   if (!existsSync(cfg)) await writeFile(cfg, DEFAULT_CONFIG, 'utf-8');
+
+  await syncOffsetsFromGist();
+}
+
+// --- 오프셋: 오소리 gist ---------------------------------------------------------
+//
+// 게임 패치로 메모리 주소가 바뀌면 Reflux 는 offsets.txt 의 새 판이 있어야 기록을 읽는다.
+// 포크 저장소·릴리스는 메모리 '구조' 가 바뀌어 코드를 고칠 때만 갱신되고, 주소만 바뀌는 패치는
+// 오소리 개발자의 gist(offsets.json)에만 올라간다(2026-09-26 확인. 08-05 패치 때도 gist 가 1.5시간 먼저).
+// 그래서 Reflux 를 켜기 전에 gist 를 보고, 디스크보다 새 판이면 offsets.txt 를 그것으로 쓴다.
+//
+// Reflux 는 켜질 때 게임의 빌드 번호(P2D:J:B:A:YYYYMMDDxx)를 직접 읽어 offsets.txt 첫 줄과 비교한다.
+// 같으면 그대로 쓰고, 다르면 updateserver(포크)에서 찾고, 거기도 없으면 콘솔에서 사람이 조작하는
+// 수동 검색으로 빠진다 — 이 앱이 띄운 Reflux 는 그 자리에서 멈춘다. 이 동기화가 그걸 막는다.
+//
+// gist 의 builds[0] 이 최신 빌드다. 실행 중인 게임 빌드를 직접 읽어 고르지는 않는다(INF오소리는
+// 게임 메모리를 읽어 고른다) — 게임은 늘 최신으로 업데이트되므로 최신 판을 쓰고, 버전이 다르면
+// Reflux 가 위 순서로 알아서 처리한다. 디스크가 더 새 판이면(포크 릴리스가 앞선 경우) 건드리지 않는다.
+const GIST_OFFSETS_URL =
+  'https://gist.githubusercontent.com/OhSorry-DP/30c3ba6f87df9847291c42ea216a8d2a/raw/offsets.json';
+const OFFSET_KEYS = ['songList', 'unlockdata', 'playSettings', 'playData', 'currentsong', 'judgeData', 'datamap'];
+
+/** offsets.txt 첫 줄(또는 빌드 문자열) 끝의 YYYYMMDDxx. 없으면 0. 클수록 최신. */
+export function offsetsVersionNum(text: string): number {
+  const first = (text || '').split(/\r?\n/)[0]?.trim() ?? '';
+  const m = first.match(/(\d{10})\s*$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+interface GistBuild { version: string; reflux?: Record<string, string> }
+
+/** gist JSON 에서 최신 빌드를 고른다(v2 는 builds[0], v1 은 최상위). 쓸 수 없으면 null. */
+export function latestGistBuild(j: unknown): GistBuild | null {
+  const o = j as { version?: unknown; reflux?: unknown; builds?: unknown };
+  const builds = Array.isArray(o?.builds) ? (o.builds as GistBuild[]).filter((b) => b && typeof b.version === 'string') : [];
+  const b = builds[0] ?? (typeof o?.version === 'string' ? { version: o.version, reflux: o.reflux as Record<string, string> } : null);
+  if (!b || !b.reflux || !offsetsVersionNum(b.version)) return null;
+  // 주소가 하나라도 빠지면 Reflux 가 그 항목을 못 읽는다 — 불완전한 판은 쓰지 않는다
+  if (!OFFSET_KEYS.every((k) => typeof b.reflux![k] === 'string' && /^0x[0-9a-f]+$/i.test(b.reflux![k]))) return null;
+  return b;
+}
+
+export function offsetsText(b: GistBuild): string {
+  return b.version.trim() + '\n' + OFFSET_KEYS.map((k) => `${k} = ${b.reflux![k]}`).join('\n') + '\n';
+}
+
+async function syncOffsetsFromGist(): Promise<void> {
+  const dest = join(workDir(), 'offsets.txt');
+  const diskVer = existsSync(dest) ? offsetsVersionNum(await readFile(dest, 'utf-8')) : 0;
+  let build: GistBuild | null = null;
+  try {
+    const res = await fetch(`${GIST_OFFSETS_URL}?t=${Date.now()}`, { headers: UA, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    build = latestGistBuild(await res.json());
+    if (!build) throw new Error('형식이 다릅니다');
+  } catch (e) {
+    log(`오프셋 gist 확인 실패 — 있는 offsets.txt 를 씁니다 (${(e as Error).message})`);
+    return;
+  }
+  const gistVer = offsetsVersionNum(build.version);
+  if (gistVer <= diskVer) return;
+  await writeFile(dest, offsetsText(build), 'utf-8');
+  log(`오프셋 갱신 (gist): ${diskVer || '없음'} → ${gistVer}`);
 }
 
 let ownPid: number | null = null;
