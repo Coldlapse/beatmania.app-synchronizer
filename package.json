@@ -1,8 +1,8 @@
 {
   "name": "beatmania-app-synchronizer",
   "productName": "beatmania.app Synchronizer",
-  "version": "0.1.2",
-  "description": "INFINITAS 플레이 기록을 beatmania.app 서열표로 자동 동기화하는 상주 앱",
+  "version": "0.1.3",
+  "description": "beatmania.app Synchronizer",
   "author": "Coldlapse",
   "license": "MIT",
   "homepage": "https://beatmania.app/sync/",

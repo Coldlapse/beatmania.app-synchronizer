@@ -66,7 +66,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'beatmania.app Synchronizer',
-    icon: join(ASSETS, 'tray.png'),
+    icon: join(ASSETS, 'icon.png'),       // 작업 표시줄 — 32px 트레이 아이콘을 쓰면 흐리게 커진다
     backgroundColor: '#0f172a',
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
@@ -139,7 +139,7 @@ function openProfile(): void {
 function notify(title: string, body: string): void {
   log(`알림: ${title} — ${body}`);
   if (!Notification.isSupported()) return;
-  const n = new Notification({ title, body, icon: join(ASSETS, 'tray.png') });
+  const n = new Notification({ title, body, icon: join(ASSETS, 'icon.png') });
   n.on('click', showWindow);
   n.show();
 }
