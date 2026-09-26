@@ -19,6 +19,14 @@ let quitting = false;
 let updateStatus: { status: UpdateStatus; version?: string } = { status: 'idle' };
 // safeStorage(토큰 복호화)는 앱이 준비된 뒤에만 쓸 수 있다. 그래서 boot 에서 만든다.
 let sync: Sync | null = null;
+// 저장된 토큰을 서버가 거부했다(시작할 때 확인). 화면에 '다시 넣어 주세요' 를 띄운다.
+let tokenInvalid = false;
+
+// 개발 실행(npm start)은 설치판과 다른 설정 폴더를 쓴다. 전에는 같은 폴더를 써서, 개발 중 dev 서버에
+// 넣은 토큰과 계정 이름이 설치판 설정에 그대로 남았다 — 설치판이 라이브에서 거부되는 토큰을 들고
+// 'sadang 계정으로 연결' 이라고 보여 줬다(2026-09-26). 한 번에 하나만 뜨게 하는 잠금도 폴더 기준이라,
+// 개발 실행이 떠 있으면 설치판을 눌러도 개발 실행 창이 올라왔다. 둘 다 여기서 갈라진다.
+if (!app.isPackaged) app.setPath('userData', app.getPath('userData') + ' (dev)');
 
 if (!app.requestSingleInstanceLock()) {
   // 이미 떠 있다. 그쪽 창을 띄우게 하고 이쪽은 끈다.
@@ -36,6 +44,7 @@ function snapshot() {
     launchAtLogin: s.launchAtLogin,
     serverUrl: s.serverUrl,
     username: s.username,
+    tokenInvalid,
     log: recent(),
   };
 }
@@ -146,8 +155,17 @@ async function refreshUsername(): Promise<void> {
   const token = settings.getToken();
   if (!token) return;
   const r = await whoami(settings.load().serverUrl, token, app.getVersion());
-  if (r.kind === 'ok' && r.username !== settings.load().username) {
-    settings.save({ username: r.username });
+  if (r.kind === 'unauthorized') {
+    // 전에는 아무것도 하지 않아 예전 계정 이름이 '연결되어 있습니다' 로 계속 보였다.
+    tokenInvalid = true;
+    settings.save({ username: null });
+    log('저장된 API 토큰을 서버가 받아 주지 않습니다 — 사이트에서 다시 복사해 넣어 주세요');
+    push();
+    return;
+  }
+  if (r.kind === 'ok') {
+    tokenInvalid = false;
+    if (r.username !== settings.load().username) settings.save({ username: r.username });
     push();
   }
 }
@@ -197,6 +215,7 @@ ipcMain.handle('token:set', async (_e, token: string) => {
   if (!t) {
     settings.setToken(null);
     settings.save({ username: null });
+    tokenInvalid = false;
     sync?.tokenChanged();
     log('API 토큰을 지웠습니다');
     push();
@@ -207,6 +226,7 @@ ipcMain.handle('token:set', async (_e, token: string) => {
   if (r.kind === 'network') return { ok: false, error: `서버에 닿지 않습니다 (${r.error})` };
   settings.setToken(t);
   settings.save({ username: r.username });
+  tokenInvalid = false;
   sync?.tokenChanged();
   log(`API 토큰을 저장했습니다 (${r.username})`);
   push();

@@ -105,7 +105,8 @@ function render(s: any): void {
   }
 
   // 설정 판
-  $('account').textContent = s.username ? `${s.username} 계정으로 연결되어 있습니다.`
+  $('account').textContent = s.tokenInvalid ? '저장된 토큰을 서버가 받아 주지 않습니다. 사이트의 API 토큰을 다시 복사해 넣어 주세요.'
+    : s.username ? `${s.username} 계정으로 연결되어 있습니다.`
     : hasToken ? '토큰이 저장되어 있습니다(계정 확인 전).' : '연결된 계정이 없습니다.';
   ($('launch') as HTMLInputElement).checked = !!s.launchAtLogin;
   $('refluxInfo').textContent = s.mode === 'own' ? `이 앱이 실행 (PID ${s.refluxPid ?? '-'})`
