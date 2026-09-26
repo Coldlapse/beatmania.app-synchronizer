@@ -1,20 +1,19 @@
 // beatmania.app Synchronizer — 진입점.
 //
-// 트레이에 상주한다. 창을 닫아도 꺼지지 않고 트레이로 숨는다. 끄려면 트레이 메뉴의
-// "종료". Windows 로그인 때 창 없이(--hidden) 뜬다.
-import { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, shell, Tray } from 'electron';
+// 보통 창 앱이다. 켜 두는 동안 동기화하고, 창을 닫으면 앱이 꺼진다(트레이는 쓰지 않는다).
+// Windows 로그인 때는 작업 표시줄에 내려 둔 채로(--minimized) 뜬다.
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 import { join } from 'path';
 
 import { log, logDir, onLine, recent } from './log';
 import * as settings from './settings';
 import { Sync } from './sync';
-import { installNow, startUpdater, UpdateStatus } from './updater';
+import { Answer, startUpdater, UpdateStatus } from './updater';
 import { whoami } from './uploader';
 
 const ASSETS = join(__dirname, '..', '..', 'assets');
 
 let win: BrowserWindow | null = null;
-let tray: Tray | null = null;
 let quitting = false;
 let updateStatus: { status: UpdateStatus; version?: string } = { status: 'idle' };
 // safeStorage(토큰 복호화)는 앱이 준비된 뒤에만 쓸 수 있다. 그래서 boot 에서 만든다.
@@ -51,7 +50,6 @@ function snapshot() {
 
 function push(): void {
   win?.webContents.send('state', snapshot());
-  refreshTray();
 }
 
 function createWindow(): void {
@@ -66,7 +64,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     title: 'beatmania.app Synchronizer',
-    icon: join(ASSETS, 'icon.png'),       // 작업 표시줄 — 32px 트레이 아이콘을 쓰면 흐리게 커진다
+    icon: join(ASSETS, 'icon.png'),       // 작업 표시줄·창 아이콘(256px)
     backgroundColor: '#0f172a',
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'index.js'),
@@ -82,9 +80,11 @@ function createWindow(): void {
   });
   win.loadFile(join(__dirname, '..', 'renderer', 'index.html'));
   win.on('close', (e) => {
+    // 닫기 = 앱 종료. 전에는 트레이로 숨었다 — 켜져 있는지 알기 어렵고 트레이에 있을 이유가 없었다
+    // (사용자 결정 2026-09-26). Reflux 를 먼저 정리해야 해서 한 번 막고 quit() 으로 끈다.
     if (quitting) return;
-    e.preventDefault();          // 닫기 = 트레이로 숨기기
-    win?.hide();
+    e.preventDefault();
+    void quit();
   });
   // 창 안의 링크는 기본 브라우저로 연다.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -95,36 +95,9 @@ function createWindow(): void {
 
 function showWindow(): void {
   if (!win) createWindow();
+  if (win!.isMinimized()) win!.restore();
   win!.show();
   win!.focus();
-}
-
-function trayLabel(): string {
-  const s = sync?.state;
-  if (!s) return '준비 중';
-  if (!s.tokenSet) return '토큰을 넣어 주세요';
-  if (s.tokenInvalid) return '토큰이 올바르지 않습니다';
-  if (s.error) return '문제가 있습니다';
-  if (s.game === 'running') return s.pending ? '게임 중 — 보낼 기록 있음' : '게임 중 — 동기화됨';
-  return '대기 중';
-}
-
-function refreshTray(): void {
-  if (!tray) return;
-  tray.setToolTip(`beatmania.app Synchronizer\n${trayLabel()}`);
-  const menu = Menu.buildFromTemplate([
-    { label: trayLabel(), enabled: false },
-    { type: 'separator' },
-    { label: '열기', click: showWindow },
-    { label: '지금 보내기', click: () => void sync?.syncNow() },
-    { label: '내 서열표 열기', click: openProfile },
-    ...(updateStatus.status === 'ready'
-      ? [{ label: `업데이트 설치 (${updateStatus.version})`, click: () => { quitting = true; installNow(); } }]
-      : []),
-    { type: 'separator' },
-    { label: '종료', click: () => void quit() },
-  ]);
-  tray.setContextMenu(menu);
 }
 
 function siteUrl(path: string): string {
@@ -145,9 +118,14 @@ function notify(title: string, body: string): void {
 }
 
 async function quit(): Promise<void> {
+  if (quitting) return;
   quitting = true;
+  log('종료');
   await sync?.shutdown();
-  app.quit();
+  // 정리는 끝났다. app.quit() 은 창 닫기에서 이어 부르면 프로세스가 남는 경우가 있어(개발 실행에서
+  // 재현, 2026-09-26) 확실히 끝내는 exit 을 쓴다 — Reflux 정리와 마지막 전송은 위에서 이미 했다.
+  win?.destroy();
+  app.exit(0);
 }
 
 /** 저장된 토큰의 주인을 확인해 둔다. 네트워크가 없으면 다음 기회로 미룬다. */
@@ -175,12 +153,10 @@ function boot(): void {
   const s = settings.load();
   // 개발 중(npm start)에는 로그인 자동 실행을 건드리지 않는다.
   if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: ['--hidden'] });
+    app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: ['--minimized'] });
   }
 
   sync = new Sync();
-  tray = new Tray(nativeImage.createFromPath(join(ASSETS, 'tray-16.png')));
-  tray.on('click', showWindow);
   createWindow();
 
   onLine(() => push());
@@ -198,12 +174,35 @@ function boot(): void {
   startUpdater((status, version) => {
     updateStatus = { status, version };
     push();
+  }, askUpdate, async () => {
+    quitting = true;
+    await sync?.shutdown();
   });
 
-  const hidden = process.argv.includes('--hidden');
-  // 토큰이 없으면 처음 켤 때 창을 보여 준다 — 할 일이 있다는 뜻이다.
-  if (!hidden || !settings.getToken()) showWindow();
-  refreshTray();
+  // Windows 시작 때는 작업 표시줄에 내려 둔 채로 켠다(--minimized, 옛 설치판의 --hidden 도 같게).
+  // 토큰이 없으면 할 일이 있다는 뜻이라 창을 띄운다.
+  const minimized = process.argv.includes('--minimized') || process.argv.includes('--hidden');
+  if (minimized && settings.getToken()) {
+    win!.once('ready-to-show', () => { win!.showInactive(); win!.minimize(); });
+  } else {
+    showWindow();
+  }
+}
+
+/** 새 버전이 있을 때 묻는다(켤 때 한 번). 창이 내려가 있으면 올린 뒤 묻는다. */
+async function askUpdate(version: string): Promise<Answer> {
+  showWindow();
+  const r = await dialog.showMessageBox(win!, {
+    type: 'info',
+    title: 'beatmania.app Synchronizer',
+    message: `새 버전 ${version} 이 있습니다. 지금 업데이트할까요?`,
+    detail: `지금 버전은 ${app.getVersion()} 입니다. 예를 누르면 받아서 설치한 뒤 다시 켭니다.`,
+    buttons: ['예', '아니요', '이번 버전 알리지 않기'],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+  });
+  return (['yes', 'no', 'skip'] as const)[r.response] ?? 'no';
 }
 
 // --- 화면과 주고받는 것 ------------------------------------------------------
@@ -242,5 +241,4 @@ ipcMain.handle('open:logs', () => shell.openPath(logDir()));
 ipcMain.handle('open:profile', () => openProfile());
 ipcMain.handle('open:site', (_e, path: string) => shell.openExternal(siteUrl(path || '/')));
 
-app.on('window-all-closed', () => { /* 트레이에 남는다 */ });
 app.on('before-quit', () => { quitting = true; });

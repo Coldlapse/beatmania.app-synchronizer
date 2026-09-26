@@ -136,7 +136,7 @@ export class Sync {
     this.nextAllowed = 0;
   }
 
-  /** 트레이의 "지금 보내기". 1분 제한을 무시한다(서버의 10초 제한은 그대로). */
+  /** 화면의 "지금 보내기". 1분 제한을 무시한다(서버의 10초 제한은 그대로). */
   async syncNow(): Promise<void> {
     this.sentMtime = -1;
     this.nextAllowed = 0;

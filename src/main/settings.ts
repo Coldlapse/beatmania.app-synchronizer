@@ -11,6 +11,7 @@ export interface Settings {
   tokenEnc: string | null;
   username: string | null;     // 토큰 주인(/api/v1/me/). '내 서열표' 링크에 쓴다
   launchAtLogin: boolean;
+  skipVersion: string | null;  // '이번 버전 알리지 않기' 를 고른 버전(updater.ts)
 }
 
 const DEFAULTS: Settings = {
@@ -18,6 +19,7 @@ const DEFAULTS: Settings = {
   tokenEnc: null,
   username: null,
   launchAtLogin: true,
+  skipVersion: null,
 };
 
 function file(): string {

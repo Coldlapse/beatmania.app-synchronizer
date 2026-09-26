@@ -113,7 +113,8 @@ function render(s: any): void {
     : s.mode === 'external' ? `다른 프로그램의 것을 읽는 중 (PID ${s.refluxPid})` : '게임을 켜면 시작';
   const upd = s.update || {};
   const updText: Record<string, string> = {
-    ready: `업데이트 ${upd.version} 준비됨 — 앱을 끌 때 설치`, downloading: `업데이트 ${upd.version ?? ''} 받는 중`,
+    available: `새 버전 ${upd.version} 있음 — 다음에 켤 때 묻습니다`, skipped: `새 버전 ${upd.version} 알리지 않음`,
+    downloading: `업데이트 ${upd.version ?? ''} 받는 중`, installing: `업데이트 ${upd.version ?? ''} 설치 중`,
     latest: '최신 버전', checking: '업데이트 확인 중', error: '업데이트 확인 실패', dev: '개발 실행',
   };
   $('versionInfo').textContent = `v${s.version ?? '-'} · ${updText[upd.status] ?? '-'}`;
