@@ -78,8 +78,11 @@ function render(s: any): void {
     ? `이번 플레이: 새 기록 ${ses.created} · 갱신 ${ses.improved}` : '';
 
   const notice = $('notice');
-  notice.hidden = !s.error;
-  notice.textContent = s.error || '';
+  const installing = s.update?.status === 'installing';
+  notice.hidden = !s.error && !installing;
+  notice.textContent = installing
+    ? `업데이트 ${s.update.version ?? ''} 를 설치합니다. 앱이 잠시 꺼졌다가 약 10초 뒤 저절로 다시 켜집니다.`
+    : s.error || '';
 
   ($('profile') as HTMLButtonElement).disabled = !s.username;
 

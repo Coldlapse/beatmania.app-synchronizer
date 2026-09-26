@@ -25,7 +25,7 @@ export type Answer = 'yes' | 'no' | 'skip';
 export function startUpdater(
   onStatus: (s: UpdateStatus, version?: string) => void,
   ask: (version: string) => Promise<Answer>,
-  beforeInstall: () => Promise<void>,
+  beforeInstall: (version: string) => Promise<void>,
 ): void {
   if (!app.isPackaged) {
     onStatus('dev');
@@ -70,7 +70,10 @@ export function startUpdater(
     log(`새 버전 ${i.version} 을 설치하고 다시 켭니다`);
     onStatus('installing', i.version);
     // Reflux 를 먼저 정리한다 — 설치 프로그램이 앱을 강제로 끄면 Reflux 가 남는다.
-    void beforeInstall().then(() => autoUpdater.quitAndInstall(true, true));
+    // 조용히 설치하고(isSilent) 끝나면 다시 켠다. 설치 프로그램이 마법사 방식(oneClick=false)이라
+    // 조용하지 않게 하면 업데이트마다 마법사 페이지가 뜬다. 설치 중 약 12초 동안 아무것도 보이지 않아
+    // 안 켜지는 것처럼 보였으므로(2026-09-26), 끄기 전에 알림으로 알린다(beforeInstall).
+    void beforeInstall(i.version).then(() => autoUpdater.quitAndInstall(true, true));
   });
   autoUpdater.on('error', (e) => {
     busy = false;

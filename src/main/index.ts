@@ -175,13 +175,32 @@ function boot(): void {
   startUpdater((status, version) => {
     updateStatus = { status, version };
     push();
-  }, askUpdate, async () => {
+  }, askUpdate, async (version) => {
+    // 설치 중(약 12초)에는 앱이 꺼져 있다. 창과 알림으로 곧 다시 켜진다는 것을 먼저 보여 준다.
+    notify('업데이트를 설치합니다', `v${version} 설치가 끝나면 약 10초 뒤 저절로 다시 켜집니다.`);
     quitting = true;
     await sync?.shutdown();
+    await new Promise((r) => setTimeout(r, 2000));   // 창의 '설치 중' 표시를 읽을 틈
   });
 
   // Windows 시작 때도 숨기거나 내리지 않고 창을 띄운다(옛 판의 --hidden 인자는 무시).
   showWindow();
+  // 업데이트 설치 프로그램이 다시 켠 경우(--updated). 백그라운드 프로세스가 띄운 창이라 Windows 가
+  // 앞으로 내주지 않아 다른 창 뒤에 깔렸다 — 켜졌는데 안 켜진 것처럼 보였다(2026-09-26 0.1.4→0.1.5).
+  // 잠깐 항상 위로 올려 앞에 세우고 작업 표시줄 버튼을 깜빡인다.
+  if (process.argv.includes('--updated')) {
+    log(`업데이트 완료 — v${app.getVersion()}`);
+    const front = () => {
+      if (!win) return;
+      win.setAlwaysOnTop(true);
+      win.show();
+      win.focus();
+      win.flashFrame(true);
+      setTimeout(() => win?.setAlwaysOnTop(false), 1500);
+    };
+    if (win!.isVisible()) front(); else win!.once('show', front);
+    win!.once('focus', () => win?.flashFrame(false));
+  }
 }
 
 /** 새 버전이 있을 때 묻는다(켤 때 한 번). 창이 내려가 있으면 올린 뒤 묻는다. */
