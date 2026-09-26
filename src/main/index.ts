@@ -1,7 +1,7 @@
 // beatmania.app Synchronizer — 진입점.
 //
 // 보통 창 앱이다. 켜 두는 동안 동기화하고, 창을 닫으면 앱이 꺼진다(트레이는 쓰지 않는다).
-// Windows 로그인 때는 작업 표시줄에 내려 둔 채로(--minimized) 뜬다.
+// Windows 로그인 때도 창이 그대로 뜬다(사용자 결정 2026-09-26).
 import { app, BrowserWindow, dialog, ipcMain, Notification, shell } from 'electron';
 import { join } from 'path';
 
@@ -153,7 +153,8 @@ function boot(): void {
   const s = settings.load();
   // 개발 중(npm start)에는 로그인 자동 실행을 건드리지 않는다.
   if (app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: ['--minimized'] });
+    // 인자 없이 등록한다. 옛 판이 --hidden 으로 등록해 둔 항목도 이 호출이 덮어쓴다.
+    app.setLoginItemSettings({ openAtLogin: s.launchAtLogin, args: [] });
   }
 
   sync = new Sync();
@@ -179,14 +180,8 @@ function boot(): void {
     await sync?.shutdown();
   });
 
-  // Windows 시작 때는 작업 표시줄에 내려 둔 채로 켠다(--minimized, 옛 설치판의 --hidden 도 같게).
-  // 토큰이 없으면 할 일이 있다는 뜻이라 창을 띄운다.
-  const minimized = process.argv.includes('--minimized') || process.argv.includes('--hidden');
-  if (minimized && settings.getToken()) {
-    win!.once('ready-to-show', () => { win!.showInactive(); win!.minimize(); });
-  } else {
-    showWindow();
-  }
+  // Windows 시작 때도 숨기거나 내리지 않고 창을 띄운다(옛 판의 --hidden 인자는 무시).
+  showWindow();
 }
 
 /** 새 버전이 있을 때 묻는다(켤 때 한 번). 창이 내려가 있으면 올린 뒤 묻는다. */
@@ -233,7 +228,7 @@ ipcMain.handle('token:set', async (_e, token: string) => {
 });
 ipcMain.handle('settings:launchAtLogin', (_e, on: boolean) => {
   settings.save({ launchAtLogin: on });
-  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] });
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: on, args: [] });
   push();
 });
 ipcMain.handle('sync:now', () => sync?.syncNow());
